@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fit My Trip: Safe Boundary</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Pretendard:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --grid-bg: #e2e8f0;
+            --grid-line: #cbd5e0;
+            --ghost-color: rgba(72, 187, 120, 0.6);
+            --ghost-error: rgba(245, 101, 101, 0.6);
+            --tile-size: 45px;
+            --title-bg-top: #4facfe;
+            --title-bg-bottom: #00f2fe;
+            --accent-color: #ff9a44;
+            --hint-color: #f6e05e;
+            --reset-color: #feb2b2;
+        }
+
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            user-select: none;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* === 타이틀 화면 === */
+        #title-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, var(--title-bg-top) 0%, var(--title-bg-bottom) 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 2000; transition: opacity 0.5s ease-out, visibility 0.5s;
+        }
+        #title-screen.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+        .title-content { text-align: center; color: white; }
+        
+        .suitcase-illustration { position: relative; width: 200px; height: 160px; margin: 0 auto 30px; }
+        .suitcase-body {
+            position: absolute; bottom: 0; width: 100%; height: 120px;
+            background-color: #ff8c00; border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2); border: 6px solid #e67e22; overflow: hidden;
+        }
+        .suitcase-body::after {
+            content: ''; position: absolute; top: 10px; left: 10px; right: 10px; bottom: 0;
+            background-color: #fbe7c6; border-radius: 10px 10px 0 0;
+        }
+        .suitcase-handle {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 80px; height: 40px; border: 8px solid #d35400; border-bottom: none; border-radius: 20px 20px 0 0;
+        }
+        .floating-item {
+            position: absolute; background: white; border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; font-size: 24px;
+            animation: float 3s ease-in-out infinite;
+        }
+        .fi-1 { width: 50px; height: 50px; top: 10px; left: 10px; animation-delay: 0s; background: #fc8181; }
+        .fi-2 { width: 60px; height: 40px; top: -20px; right: 30px; animation-delay: 1s; background: #63b3ed; }
+        .fi-3 { width: 40px; height: 60px; top: 50px; right: -10px; animation-delay: 0.5s; background: #f6e05e; }
+        @keyframes float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(5deg); } }
+
+        h1.main-title { font-family: 'Fredoka', sans-serif; font-size: 4rem; margin: 0; text-shadow: 3px 3px 0px var(--accent-color); letter-spacing: 2px; }
+        p.sub-title { font-size: 1.3rem; margin-top: 10px; margin-bottom: 40px; font-weight: bold; }
+        .start-button {
+            padding: 20px 60px; font-size: 1.5rem; font-weight: bold; font-family: 'Fredoka', sans-serif;
+            color: white; background-color: var(--accent-color); border: none; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 8px 15px rgba(255, 154, 68, 0.4); transition: all 0.3s ease;
+        }
+        .start-button:hover { background-color: #ff8c00; transform: translateY(-5px); }
+
+        /* === 게임 화면 === */
+        #game-wrapper {
+            display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%;
+        }
+        h2.game-title-small { color: #2d3748; margin-bottom: 5px; font-family: 'Fredoka', sans-serif; }
+        .instruction { color: #718096; margin-bottom: 15px; font-size: 0.9rem; text-align: center; }
+
+        #game-container {
+            display: flex; gap: 40px; align-items: flex-start; justify-content: center; max-width: 95%; height: auto; min-height: 600px;
+        }
+        .section { display: flex; flex-direction: column; align-items: center; }
+        .bag-label { font-weight: bold; margin-bottom: 10px; color: #4a5568; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+        .phase-badge { background: #3182ce; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; }
+
+        #grid {
+            display: grid; background-color: var(--grid-bg); border: 4px solid #2d3748; border-radius: 8px;
+            position: relative; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); padding: 0; transition: width 0.3s, height 0.3s;
+        }
+        .cell { width: var(--tile-size); height: var(--tile-size); box-sizing: border-box; border: 1px solid var(--grid-line); }
+
+        #inventory {
+            width: 400px; height: 600px; background-color: white; border-radius: 10px; padding: 20px;
+            /* 자유 배치를 위해 relative, 넘침 방지를 위해 hidden */
+            display: block; 
+            position: relative; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+            overflow: hidden; 
+        }
+        
+        /* 아이템 */
+        .item { 
+            position: relative; z-index: 10; margin-bottom: 10px; 
+            transition: transform 0.1s;
+            pointer-events: none; /* 컨테이너 클릭 통과 */
+        }
+        
+        .item.fixed-pos {
+            position: fixed; 
+            z-index: 2000;
+            margin: 0;
+            transition: none !important; 
+        }
+        
+        .item.in-inventory {
+            position: relative;
+            z-index: 10;
+        }
+
+        .item.placed {
+            position: absolute; z-index: 5;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .block {
+            position: absolute; width: var(--tile-size); height: var(--tile-size); box-sizing: border-box;
+            border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; display: flex; justify-content: center; align-items: center;
+            font-size: 1.2rem; box-shadow: inset 0 0 5px rgba(0,0,0,0.1); 
+            pointer-events: auto; /* 내부 블록 클릭 감지 */
+            cursor: grab;
+        }
+        
+        .item.dragging .block { cursor: grabbing; }
+        .item.placed .block { border-radius: 0; border: 1px solid rgba(0,0,0,0.1); }
+        .item.hint-effect { animation: hintFlash 0.5s ease-in-out; }
+        @keyframes hintFlash { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.1); filter: brightness(1.5); } 100% { transform: scale(1); } }
+
+        /* Proxy & Source Styling */
+        .drag-proxy {
+            position: fixed; z-index: 9999; pointer-events: none;
+            opacity: 0.9; filter: drop-shadow(5px 10px 15px rgba(0,0,0,0.3)); transform: scale(1.05);
+        }
+        .item.dragging-source { opacity: 0; }
+
+        .ghost-container { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 50; display: none; }
+        .ghost-block {
+            position: absolute; width: var(--tile-size); height: var(--tile-size);
+            background-color: var(--ghost-color); border: 2px dashed #276749; box-sizing: border-box;
+        }
+        .ghost-container.invalid .ghost-block { background-color: var(--ghost-error); border-color: #c53030; }
+
+        #message {
+            position: absolute; top: 30px; background: rgba(45, 55, 72, 0.95); color: white; padding: 15px 30px;
+            border-radius: 50px; font-weight: bold; font-size: 1.2rem; display: none; z-index: 300;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2); animation: slideDown 0.3s forwards; text-align: center;
+        }
+        @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        #next-btn {
+            margin-top: 20px; padding: 15px 50px; background-color: #4299e1; color: white; border: none;
+            border-radius: 30px; font-size: 1.2rem; font-weight: bold; cursor: pointer; display: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #next-btn:hover { background-color: #3182ce; transform: translateY(-2px); }
+
+        .inv-header { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 8px; }
+        .small-btn {
+            padding: 6px 12px; border: none; border-radius: 15px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 0.85rem; display: flex; align-items: center; gap: 4px;
+        }
+        #hint-btn { background-color: var(--hint-color); color: #744210; }
+        #hint-btn:hover { background-color: #ecc94b; }
+        #hint-btn:disabled { background-color: #e2e8f0; color: #a0aec0; cursor: not-allowed; }
+        #reset-btn { background-color: var(--reset-color); color: #9b2c2c; }
+        #reset-btn:hover { background-color: #fc8181; }
+
+    </style>
+</head>
+<body>
+
+    <div id="title-screen">
+        <div class="title-content">
+            <div class="suitcase-illustration">
+                <div class="suitcase-handle"></div>
+                <div class="suitcase-body"></div>
+                <div class="floating-item fi-1">👕</div>
+                <div class="floating-item fi-2">📷</div>
+                <div class="floating-item fi-3">🩴</div>
+            </div>
+            <h1 class="main-title">FIT MY TRIP</h1>
+            <p class="sub-title">완벽한 여행을 위한 가방 싸기 퍼즐!</p>
+            <button class="start-button" onclick="startGame()">여행 떠나기 ✈️</button>
+        </div>
+    </div>
+
+    <div id="game-wrapper">
+        <div id="message"></div>
+        <h2 class="game-title-small">Fit My Trip: Puzzle Master 🚀</h2>
+        <p class="instruction">
+            드래그 & 드롭으로 빈틈없이 채우세요. (회전: <b>'R'키</b>)<br>
+            (인벤토리 자유 배치)
+        </p>
+
+        <div id="game-container">
+            <div class="section">
+                <div class="bag-label">
+                    <span id="phase-badge" class="phase-badge">Level 1</span>
+                    <span id="bag-name">준비 중...</span>
+                </div>
+                <div id="grid"></div>
+            </div>
+
+            <div class="section">
+                <div class="inv-header">
+                    <div class="bag-label" style="margin:0;">준비물</div>
+                    <div class="btn-group">
+                        <button id="reset-btn" class="small-btn" onclick="resetLevel()">🔄 초기화</button>
+                        <button id="hint-btn" class="small-btn" onclick="useHint()">💡 힌트 (3)</button>
+                    </div>
+                </div>
+                <div id="inventory"></div>
+            </div>
+        </div>
+
+        <button id="next-btn" onclick="nextStage()">다음 스테이지 ➡️</button>
+    </div>
+
+<script>
+    function startGame() {
+        document.getElementById('title-screen').classList.add('fade-out');
+        setTimeout(() => {
+            document.getElementById('game-wrapper').style.display = 'flex';
+            initGame(1);
+        }, 400);
+    }
+
+    const TILE_SIZE = 45;
+    const MAX_STAGES = 9;
+    const ICONS = ['👕','👖','👔','👗','🧦','👟','🧢','🕶️','📷','🔌','🔋','🎧','📱','💻','⌨️','🖱️','📕','🧴','🪥','💊'];
+    const COLORS = ['#fc8181', '#f6ad55', '#f6e05e', '#68d391', '#63b3ed', '#76e4f7', '#b794f4', '#f687b3', '#cbd5e0'];
+
+    let currentStageIdx = 1;
+    let gridState = [];
+    let draggedItem = null;
+    let dragProxy = null; // 대리자
+    let dragOffset = { x: 0, y: 0 }; 
+    let globalMouse = { x: 0, y: 0 }; 
+    let validDropTarget = null;
+    let collectedReward = null;
+    let hintsLeft = 3; 
+
+    document.addEventListener('mousemove', (e) => {
+        globalMouse.x = e.clientX;
+        globalMouse.y = e.clientY;
+    });
+
+    function generateLevelData(level) {
+        let rows = 3 + Math.floor((level - 1) / 2);
+        let cols = 3 + Math.floor((level) / 2);
+        if (rows > 6) rows = 6;
+        if (cols > 6) cols = 6;
+        return { id: level, name: `Stage ${level} (${cols}x${rows})`, rows: rows, cols: cols };
+    }
+
+    function initGame(level) {
+        currentStageIdx = level;
+        const stageData = generateLevelData(level);
+        document.getElementById('bag-name').innerText = stageData.name;
+        document.getElementById('phase-badge').innerText = `Level ${level}`;
+        document.getElementById('next-btn').style.display = 'none';
+
+        hintsLeft = 3;
+        updateHintButton();
+        createGrid(stageData.rows, stageData.cols);
+        const items = generatePuzzleItems(stageData.rows, stageData.cols);
+        renderInventory(items);
+    }
+
+    function updateHintButton() {
+        const btn = document.getElementById('hint-btn');
+        btn.innerText = `💡 힌트 (${hintsLeft})`;
+        btn.disabled = hintsLeft <= 0;
+    }
+
+    function createGrid(rows, cols) {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        const ghost = document.createElement('div');
+        ghost.id = 'ghost-container';
+        ghost.className = 'ghost-container';
+        grid.appendChild(ghost);
+        grid.style.gridTemplateColumns = `repeat(${cols}, ${TILE_SIZE}px)`;
+        grid.style.gridTemplateRows = `repeat(${rows}, ${TILE_SIZE}px)`;
+        grid.style.width = (cols * TILE_SIZE) + 'px';
+        grid.style.height = (rows * TILE_SIZE) + 'px';
+        gridState = Array(rows).fill().map(() => Array(cols).fill(0));
+        for (let i = 0; i < rows * cols; i++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            grid.appendChild(cell);
+        }
+    }
+
+    function generatePuzzleItems(rows, cols) {
+        let virtualGrid = Array(rows).fill().map(() => Array(cols).fill(0));
+        let items = [];
+        
+        if (collectedReward) {
+            let placed = false;
+            let attempt = 0;
+            const rShape = collectedReward.shape; 
+            const rH = rShape.length;
+            const rW = rShape[0].length;
+            while(!placed && attempt < 100) {
+                const startR = Math.floor(Math.random() * (rows - rH + 1));
+                const startC = Math.floor(Math.random() * (cols - rW + 1));
+                let fit = true;
+                for(let r=0; r<rH; r++) {
+                    for(let c=0; c<rW; c++) {
+                        if(rShape[r][c] === 1 && virtualGrid[startR+r][startC+c] !== 0) fit = false;
+                    }
+                }
+                if(fit) {
+                    for(let r=0; r<rH; r++) {
+                        for(let c=0; c<rW; c++) {
+                            if(rShape[r][c] === 1) virtualGrid[startR+r][startC+c] = 9;
+                        }
+                    }
+                    items.push({
+                        id: 'reward_prev',
+                        shape: JSON.parse(JSON.stringify(rShape)),
+                        targetRow: startR, targetCol: startC,
+                        color: collectedReward.color, icon: '🎒', isReward: true
+                    });
+                    placed = true;
+                }
+                attempt++;
+            }
+        }
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (virtualGrid[r][c] === 0) {
+                    let minSize = currentStageIdx >= 3 ? 3 : 2;
+                    let maxSize = 5;
+                    let targetSize = Math.floor(Math.random() * (maxSize - minSize + 1)) + minSize; 
+                    
+                    let cells = [{r, c}];
+                    virtualGrid[r][c] = 1;
+                    
+                    while (cells.length < targetSize) {
+                        let neighbors = [];
+                        cells.forEach(cell => {
+                            const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+                            dirs.forEach(d => {
+                                const nr = cell.r + d[0];
+                                const nc = cell.c + d[1];
+                                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && virtualGrid[nr][nc] === 0) {
+                                    if (!neighbors.some(n => n.r === nr && n.c === nc)) neighbors.push({r: nr, c: nc});
+                                }
+                            });
+                        });
+                        if (neighbors.length === 0) break;
+                        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                        virtualGrid[next.r][next.c] = 1;
+                        cells.push(next);
+                    }
+                    items.push(createShapeFromCells(cells));
+                }
+            }
+        }
+        return items;
+    }
+
+    function createShapeFromCells(cells) {
+        const minR = Math.min(...cells.map(c => c.r));
+        const minC = Math.min(...cells.map(c => c.c));
+        const maxR = Math.max(...cells.map(c => c.r));
+        const maxC = Math.max(...cells.map(c => c.c));
+        const h = maxR - minR + 1;
+        const w = maxC - minC + 1;
+        let shape = Array(h).fill().map(() => Array(w).fill(0));
+        cells.forEach(c => { shape[c.r - minR][c.c - minC] = 1; });
+        return {
+            id: `gen_${Math.random().toString(36).substr(2, 9)}`,
+            shape: shape,
+            targetRow: minR, targetCol: minC,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            icon: ICONS[Math.floor(Math.random() * ICONS.length)],
+            isReward: false
+        };
+    }
+
+    function renderInventory(items) {
+        const inv = document.getElementById('inventory');
+        inv.innerHTML = '';
+        
+        let currentX = 10;
+        let currentY = 10;
+        const invWidth = 380; 
+
+        items.forEach(itemData => {
+            const el = createItemElement(itemData, inv);
+            const itemW = parseInt(el.style.width);
+            const itemH = parseInt(el.style.height);
+            
+            if (currentX + itemW > invWidth) {
+                currentX = 10;
+                currentY += 60; 
+            }
+            
+            el.style.position = 'absolute';
+            el.style.left = currentX + 'px';
+            el.style.top = currentY + 'px';
+            
+            currentX += itemW + 10;
+            if(itemH > 50) currentY += (itemH - 50); 
+        });
+    }
+
+    function createItemElement(data, parent) {
+        const el = document.createElement('div');
+        el.classList.add('item');
+        el.dataset.id = data.id;
+        el.originalShape = JSON.parse(JSON.stringify(data.shape));
+        el.targetRow = data.targetRow;
+        el.targetCol = data.targetCol;
+        el.currentShape = JSON.parse(JSON.stringify(data.shape));
+        el.baseColor = data.color;
+        el.baseIcon = data.icon;
+        el.isReward = !!data.isReward;
+        
+        renderItemBlocks(el);
+        
+        el.addEventListener('mousedown', startDrag);
+        el.addEventListener('contextmenu', (e) => e.preventDefault());
+        parent.appendChild(el);
+        return el;
+    }
+
+    function renderItemBlocks(el) {
+        el.innerHTML = '';
+        const shape = el.currentShape;
+        const rows = shape.length;
+        const cols = shape[0].length;
+        el.style.width = (cols * TILE_SIZE) + 'px';
+        el.style.height = (rows * TILE_SIZE) + 'px';
+        const centerR = Math.floor(rows/2);
+        const centerC = Math.floor(cols/2);
+        for(let r=0; r<rows; r++){
+            for(let c=0; c<cols; c++){
+                if(shape[r][c]===1){
+                    const b = document.createElement('div');
+                    b.classList.add('block');
+                    b.style.backgroundColor = el.baseColor;
+                    b.style.top = (r*TILE_SIZE)+'px';
+                    b.style.left = (c*TILE_SIZE)+'px';
+                    if(el.isReward) b.style.border = "2px solid white";
+                    if(r===centerR && c===centerC) b.innerText = el.baseIcon;
+                    el.appendChild(b);
+                }
+            }
+        }
+    }
+
+    function resetLevel() {
+        const inv = document.getElementById('inventory');
+        const placedItems = document.querySelectorAll('.item');
+        
+        let currentX = 10;
+        let currentY = 10;
+        const invWidth = 380;
+
+        placedItems.forEach(item => {
+            if(item.classList.contains('placed')) {
+                const r = parseInt(item.dataset.row);
+                const c = parseInt(item.dataset.col);
+                updateGridState(r, c, item.currentShape, 0);
+            }
+            item.classList.remove('placed', 'dragging-source');
+            item.style.opacity = '1';
+            item.currentShape = JSON.parse(JSON.stringify(item.originalShape));
+            renderItemBlocks(item);
+            
+            // 인벤토리 재배치
+            if(item.parentElement !== inv) inv.appendChild(item);
+            item.style.position = 'absolute';
+            
+            const itemW = parseInt(item.style.width) || 50;
+            if (currentX + itemW > invWidth) {
+                currentX = 10;
+                currentY += 60; 
+            }
+            item.style.left = currentX + 'px';
+            item.style.top = currentY + 'px';
+            currentX += itemW + 10;
+        });
+        document.getElementById('next-btn').style.display = 'none';
+    }
+
+    function useHint() {
+        if (hintsLeft <= 0) return;
+        const inv = document.getElementById('inventory');
+        const itemsInInventory = Array.from(inv.children).filter(el => el.classList.contains('item') && el.parentElement === inv);
+        
+        if (itemsInInventory.length === 0) return;
+
+        const randomItem = itemsInInventory[Math.floor(Math.random() * itemsInInventory.length)];
+        hintsLeft--;
+        updateHintButton();
+
+        randomItem.currentShape = JSON.parse(JSON.stringify(randomItem.originalShape));
+        renderItemBlocks(randomItem);
+
+        const tr = randomItem.targetRow;
+        const tc = randomItem.targetCol;
+        const shape = randomItem.currentShape;
+
+        for(let r=0; r<shape.length; r++) {
+            for(let c=0; c<shape[0].length; c++) {
+                if (shape[r][c] === 1) {
+                    const checkR = tr + r;
+                    const checkC = tc + c;
+                    if (gridState[checkR][checkC] === 1) {
+                        const allItems = document.querySelectorAll('.item');
+                        allItems.forEach(pItem => {
+                            if(pItem.classList.contains('placed')) {
+                                const pr = parseInt(pItem.dataset.row);
+                                const pc = parseInt(pItem.dataset.col);
+                                const pShape = pItem.currentShape;
+                                if (checkR >= pr && checkR < pr + pShape.length &&
+                                    checkC >= pc && checkC < pc + pShape[0].length) {
+                                    if (pShape[checkR - pr][checkC - pc] === 1) {
+                                        updateGridState(pr, pc, pShape, 0); 
+                                        pItem.classList.remove('placed');
+                                        inv.appendChild(pItem);
+                                        pItem.style.position = 'absolute';
+                                        pItem.style.left = '10px'; 
+                                        pItem.style.top = '10px';
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        placeItem(randomItem, tr, tc);
+        randomItem.classList.add('hint-effect');
+        setTimeout(() => randomItem.classList.remove('hint-effect'), 500);
+
+        checkWin();
+    }
+
+    // --- PROXY DRAG SYSTEM (사라짐 버그 해결의 핵심) ---
+    function startDrag(e) {
+        if (e.button !== 0) return;
+        draggedItem = e.target.closest('.item');
+        if (!draggedItem) return;
+
+        // 1. 상태 정리
+        const grid = document.getElementById('grid');
+        if (draggedItem.parentElement === grid) {
+            const r = parseInt(draggedItem.dataset.row);
+            const c = parseInt(draggedItem.dataset.col);
+            updateGridState(r, c, draggedItem.currentShape, 0);
+            draggedItem.classList.remove('placed');
+        }
+
+        // 2. Proxy 생성 (화면 기준)
+        dragProxy = draggedItem.cloneNode(true);
+        dragProxy.classList.add('drag-proxy');
+        document.body.appendChild(dragProxy);
+
+        // 3. 원본 숨기기
+        draggedItem.classList.add('dragging-source');
+
+        // 4. Proxy 위치 동기화
+        const rect = draggedItem.getBoundingClientRect();
+        dragProxy.style.left = rect.left + 'px';
+        dragProxy.style.top = rect.top + 'px';
+        dragProxy.style.width = rect.width + 'px';
+        dragProxy.style.height = rect.height + 'px';
+
+        dragOffset.x = e.clientX - rect.left;
+        dragOffset.y = e.clientY - rect.top;
+
+        validDropTarget = null;
+
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('keydown', onKeyDown);
+        updateGhost(e.clientX, e.clientY);
+    }
+
+    function onDrag(e) {
+        if (!dragProxy) return;
+        dragProxy.style.left = (e.clientX - dragOffset.x) + 'px';
+        dragProxy.style.top = (e.clientY - dragOffset.y) + 'px';
+        updateGhost(e.clientX, e.clientY);
+    }
+
+    function onKeyDown(e) {
+        if ((e.key === 'r' || e.key === 'R') && draggedItem) {
+            const old = draggedItem.currentShape;
+            const R = old.length, C = old[0].length;
+            const nw = Array(C).fill().map(()=>Array(R).fill(0));
+            for(let r=0; r<R; r++){
+                for(let c=0; c<C; c++){
+                    nw[c][R-1-r] = old[r][c];
+                }
+            }
+            draggedItem.currentShape = nw;
+            renderItemBlocks(draggedItem);
+            
+            // Proxy도 업데이트
+            if(dragProxy) {
+                dragProxy.innerHTML = draggedItem.innerHTML;
+                dragProxy.style.width = draggedItem.style.width;
+                dragProxy.style.height = draggedItem.style.height;
+            }
+            updateGhost(globalMouse.x, globalMouse.y);
+        }
+    }
+
+    function updateGhost(mx, my) {
+        if(!dragProxy) return;
+        const grid = document.getElementById('grid');
+        const ghostContainer = document.getElementById('ghost-container');
+        const gridRect = grid.getBoundingClientRect();
+        
+        const itemLeft = mx - dragOffset.x;
+        const itemTop = my - dragOffset.y;
+
+        const relX = itemLeft - gridRect.left;
+        const relY = itemTop - gridRect.top;
+
+        const col = Math.round(relX / TILE_SIZE);
+        const row = Math.round(relY / TILE_SIZE);
+        const shape = draggedItem.currentShape;
+        
+        validDropTarget = null;
+
+        if (mx > gridRect.left - 50 && mx < gridRect.right + 50 &&
+            my > gridRect.top - 50 && my < gridRect.bottom + 50) {
+            
+            ghostContainer.style.display = 'block';
+            ghostContainer.innerHTML = '';
+            let allValid = true;
+            for(let r=0; r<shape.length; r++){
+                for(let c=0; c<shape[0].length; c++){
+                    if(shape[r][c] === 1){
+                        const gb = document.createElement('div');
+                        gb.className = 'ghost-block';
+                        gb.style.top = ((row+r)*TILE_SIZE)+'px';
+                        gb.style.left = ((col+c)*TILE_SIZE)+'px';
+                        ghostContainer.appendChild(gb);
+                        if(!isValidPlacement(row+r, col+c)) allValid = false;
+                    }
+                }
+            }
+            if(allValid) {
+                ghostContainer.classList.remove('invalid');
+                validDropTarget = {r: row, c: col};
+            } else {
+                ghostContainer.classList.add('invalid');
+            }
+        } else {
+            ghostContainer.style.display = 'none';
+        }
+    }
+
+    function isValidPlacement(r, c) {
+        if (r < 0 || c < 0) return false;
+        if (r >= gridState.length || c >= gridState[0].length) return false;
+        if (gridState[r][c] !== 0) return false;
+        return true;
+    }
+
+    function updateGridState(r, c, shape, val) {
+        for(let i=0; i<shape.length; i++){
+            for(let j=0; j<shape[0].length; j++){
+                if(shape[i][j]===1) gridState[r+i][c+j] = val;
+            }
+        }
+    }
+
+    // --- [Fix] 드롭 처리 (Boundary Check 포함) ---
+    function stopDrag(e) {
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('keydown', onKeyDown);
+        document.getElementById('ghost-container').style.display = 'none';
+        
+        // Proxy 제거
+        if(dragProxy) {
+            dragProxy.remove();
+            dragProxy = null;
+        }
+        
+        if(!draggedItem) return;
+
+        // 원본 복구
+        draggedItem.classList.remove('dragging-source');
+
+        if (validDropTarget) {
+            // 그리드 안착
+            placeItem(draggedItem, validDropTarget.r, validDropTarget.c);
+            checkWin();
+        } else {
+            // 인벤토리로 복귀 (자유 배치 + Boundary Clamping)
+            const inv = document.getElementById('inventory');
+            const invRect = inv.getBoundingClientRect();
+            
+            // 인벤토리 내부에 드롭했는지 확인
+            if (e.clientX >= invRect.left && e.clientX <= invRect.right &&
+                e.clientY >= invRect.top && e.clientY <= invRect.bottom) {
+                
+                // 마우스 위치 기준 상대 좌표
+                let relX = e.clientX - invRect.left - dragOffset.x;
+                let relY = e.clientY - invRect.top - dragOffset.y;
+                
+                // [Boundary Check] 밖으로 나가지 않게 Clamp
+                const maxX = invRect.width - draggedItem.offsetWidth;
+                const maxY = invRect.height - draggedItem.offsetHeight;
+                
+                relX = Math.max(0, Math.min(relX, maxX));
+                relY = Math.max(0, Math.min(relY, maxY));
+                
+                if(draggedItem.parentElement !== inv) inv.appendChild(draggedItem);
+                draggedItem.style.position = 'absolute';
+                draggedItem.style.left = relX + 'px';
+                draggedItem.style.top = relY + 'px';
+            } else {
+                // 인벤토리 밖(허공)이면 기본 위치로 복귀
+                if(draggedItem.parentElement !== inv) inv.appendChild(draggedItem);
+                draggedItem.style.position = 'absolute';
+                draggedItem.style.left = '10px';
+                draggedItem.style.top = '10px';
+            }
+        }
+        
+        draggedItem = null;
+        validDropTarget = null;
+    }
+
+    function placeItem(item, r, c) {
+        const grid = document.getElementById('grid');
+        updateGridState(r, c, item.currentShape, 1);
+        
+        grid.appendChild(item);
+        item.classList.add('placed');
+        
+        item.style.position = 'absolute';
+        item.style.left = (c * TILE_SIZE) + 'px';
+        item.style.top = (r * TILE_SIZE) + 'px';
+        
+        item.dataset.row = r;
+        item.dataset.col = c;
+    }
+
+    function checkWin() {
+        const inv = document.getElementById('inventory');
+        // 인벤토리 안에 .item이 하나도 없으면 클리어
+        const remaining = Array.from(inv.children).filter(el => el.classList.contains('item')).length;
+        
+        if (remaining === 0) {
+            const rows = gridState.length;
+            const cols = gridState[0].length;
+            let rewardRows = Math.ceil(rows / 2);
+            let rewardCols = Math.ceil(cols / 2);
+            if (rewardRows < 2) rewardRows = 2;
+            if (rewardCols < 2) rewardCols = 2;
+            let rewardShape = Array(rewardRows).fill().map(() => Array(rewardCols).fill(1));
+            collectedReward = {
+                shape: rewardShape,
+                color: COLORS[(currentStageIdx) % COLORS.length],
+                icon: '🎒'
+            };
+            if (currentStageIdx < MAX_STAGES) {
+                showMessage(`✨ 레벨 ${currentStageIdx} 클리어! ✨`);
+                document.getElementById('next-btn').style.display = 'block';
+            } else {
+                showMessage("🏆 모든 스테이지 클리어! 이제 여행을 즐기러 가볼까요? ✈️");
+            }
+        }
+    }
+
+    function nextStage() {
+        if (currentStageIdx < MAX_STAGES) {
+            initGame(currentStageIdx + 1);
+            document.getElementById('message').style.display = 'none';
+        }
+    }
+
+    function showMessage(text) {
+        const msg = document.getElementById('message');
+        msg.innerText = text;
+        msg.style.display = 'block';
+    }
+</script>
+</body>
+</html>
